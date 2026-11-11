@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Telegram Widget Boilerplate</title>
+<style>
+:root{
+  --bg:var(--tg-theme-bg-color,#ffffff);
+  --txt:var(--tg-theme-text-color,#000000);
+  --hint:var(--tg-theme-hint-color,#707579);
+  --btn:var(--tg-theme-button-color,#3390ec);
+  --btn-t:var(--tg-theme-button-text-color,#ffffff);
+  --card:var(--tg-theme-secondary-bg-color,#f4f4f5);
+  --acc:var(--tg-theme-accent-text-color,#3390ec);
+  --err:var(--tg-theme-destructive-text-color,#e53935);
+}
+@media(prefers-color-scheme:dark){
+  :root{
+    --bg:var(--tg-theme-bg-color,#1c1c1e);
+    --txt:var(--tg-theme-text-color,#ffffff);
+    --hint:var(--tg-theme-hint-color,#8e8e93);
+    --card:var(--tg-theme-secondary-bg-color,#2c2c2e);
+    --acc:var(--tg-theme-accent-text-color,#64b5f6);
+    --err:var(--tg-theme-destructive-text-color,#ff453a);
+  }
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{
+  font-family:system-ui,sans-serif;
+  background:var(--bg);
+  color:var(--txt);
+  padding:12px 12px max(12px,env(safe-area-inset-bottom));
+  font-size:13px;
+  line-height:1.35;
+  user-select:none;
+}
+.w-wrap{display:flex;flex-direction:column;gap:10px}
+.w-card{background:var(--card);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:6px}
+.w-head{display:flex;justify-content:space-between;align-items:center}
+.w-title{font-size:15px;font-weight:700;display:flex;align-items:center;gap:6px}
+.w-badge{font-size:10px;font-weight:700;padding:2px 6px;border-radius:6px;background:var(--btn);color:var(--btn-t);text-transform:uppercase}
+.w-desc{font-size:12px;color:var(--hint)}
+.w-row{display:flex;justify-content:space-between;align-items:center;padding-top:6px;border-top:1px solid rgba(128,128,128,.15);font-size:12px}
+.w-val{font-weight:700;color:var(--acc)}
+.w-btn{background:var(--btn);color:var(--btn-t);border:none;border-radius:10px;padding:11px 16px;font-weight:700;font-size:14px;width:100%;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px}
+.w-err{background:rgba(229,57,53,.12);color:var(--err);border:1px solid rgba(229,57,53,.25);border-radius:8px;padding:8px 12px;font-size:12px;display:none}
+.w-err.on{display:block}
+</style>
+</head>
+<body>
+<div class="w-wrap">
+  <div class="w-err" id="err-box"></div>
+  <div class="w-card">
+    <div class="w-head">
+      <div class="w-title">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        <span id="w-title">Telegram Widget</span>
+      </div>
+      <span class="w-badge" id="w-badge">Bot API 10.4</span>
+    </div>
+    <div class="w-desc" id="w-desc">Нативный HTML-виджет внутри сообщения (Profile 1).</div>
+    <div class="w-row">
+      <span class="w-desc">Подтвержденных кликов:</span>
+      <span class="w-val" id="counter">0</span>
+    </div>
+  </div>
+  <button class="w-btn" id="act-btn">Отправить запрос боту</button>
+</div>
+<script>
+(function(){
+  'use strict';
+  var TW = window.TelegramWidget || {
+    profile: 1, colorScheme: 'light', themeParams: {},
+    chatData: null, publicData: null, viewer: { id: 1, first_name: 'Dev' },
+    onEvent: function(){}, offEvent: function(){},
+    ready: function(){}, watchPublicData: function(){},
+    HapticFeedback: { impactOccurred: function(){ return this; }, notificationOccurred: function(){ return this; }, selectionChanged: function(){ return this; } },
+    request: function(d){
+      console.log('[Mock TW.request]:', d);
+      return Promise.resolve({ result: JSON.stringify({ count: state.count + 1 }) });
+    }
+  };
+
+  var $ = function(id){ return document.getElementById(id); };
+  var state = { count: 0, busy: false, rev: 0 };
+
+  function parseJSON(raw){
+    if(!raw) return null;
+    try { return typeof raw === 'string' ? JSON.parse(raw) : raw; } catch(e){ return null; }
+  }
+
+  function applyState(d){
+    if(!d) return;
+    if(typeof d.r === 'number' && d.r < state.rev) return;
+    if(typeof d.r === 'number') state.rev = d.r;
+    if(typeof d.count === 'number') state.count = d.count;
+    if(d.title) $('w-title').textContent = d.title;
+    if(d.desc) $('w-desc').textContent = d.desc;
+    render();
+  }
+
+  function render(){
+    $('counter').textContent = String(state.count);
+    $('act-btn').disabled = state.busy;
+    $('act-btn').textContent = state.busy ? 'Отправка...' : 'Отправить запрос боту';
+  }
+
+  $('act-btn').onclick = function(){
+    if(state.busy) return;
+    state.busy = true;
+    $('err-box').className = 'w-err';
+    render();
+
+    var nextCount = state.count + 1;
+    var payload = 'ACT|' + nextCount;
+    try {
+      TW.request(payload).then(function(ans){
+        state.busy = false;
+        var res = parseJSON(ans && ans.result);
+        if(res && typeof res.count === 'number'){
+          state.count = res.count;
+        } else {
+          state.count = nextCount;
+        }
+        if(TW.HapticFeedback) TW.HapticFeedback.notificationOccurred('success');
+        render();
+      }, function(err){
+        state.busy = false;
+        var code = err && err.code ? err.code : 'FAILED';
+        $('err-box').textContent = 'Ошибка запроса: ' + code;
+        $('err-box').className = 'w-err on';
+        render();
+      });
+    } catch(ex){
+      state.busy = false;
+      $('err-box').textContent = 'Ошибка: ' + (ex && ex.message ? ex.message : 'TypeError');
+      $('err-box').className = 'w-err on';
+      render();
+    }
+  };
+
+  TW.onEvent('chatDataChanged', function(){ applyState(parseJSON(TW.chatData)); });
+  TW.onEvent('publicDataChanged', function(){ applyState(parseJSON(TW.publicData)); });
+  if(TW.watchPublicData) TW.watchPublicData();
+
+  applyState(parseJSON(TW.publicData));
+  applyState(parseJSON(TW.chatData));
+  render();
+  if(TW.ready) TW.ready();
+})();
+</script>
+</body>
+</html>
